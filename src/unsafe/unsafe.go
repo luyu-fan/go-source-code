@@ -11,22 +11,22 @@ Go 1 compatibility guidelines.
 package unsafe
 
 // ArbitraryType is here for the purposes of documentation only and is not actually
-// part of the unsafe package. It represents the type of an arbitrary Go expression.
+// part of the unsafe package. It represents the type of an arbitrary Go expression. // NOTE: 这里代表了任意go表达式，实际仅仅是一个标识，并不存在真正的该类型
 type ArbitraryType int
 
 // IntegerType is here for the purposes of documentation only and is not actually
 // part of the unsafe package. It represents any arbitrary integer type.
 type IntegerType int
 
-// Pointer represents a pointer to an arbitrary type. There are four special operations
-// available for type Pointer that are not available for other types:
+// Pointer represents a pointer to an arbitrary type. There are four special operations // note: Pointer代表了任意类型的指针
+// available for type Pointer that are not available for other types: // important: 对于特殊类型的Pointer还有以下几类操作
 //   - A pointer value of any type can be converted to a Pointer.
-//   - A Pointer can be converted to a pointer value of any type.
-//   - A uintptr can be converted to a Pointer.
+//   - A Pointer can be converted to a pointer value of any type. // note: Pointer和普通的*int互转
+//   - A uintptr can be converted to a Pointer. // note: uintptr和Pointer互转，也是通过这个完成绕过gc
 //   - A Pointer can be converted to a uintptr.
 //
 // Pointer therefore allows a program to defeat the type system and read and write
-// arbitrary memory. It should be used with extreme care.
+// arbitrary memory. It should be used with extreme care. // important：核心是可以读取内存
 //
 // The following patterns involving Pointer are valid.
 // Code not using these patterns is likely to be invalid today
@@ -36,39 +36,38 @@ type IntegerType int
 // Running "go vet" can help find uses of Pointer that do not conform to these patterns,
 // but silence from "go vet" is not a guarantee that the code is valid.
 //
-// (1) Conversion of a *T1 to Pointer to *T2.
+// (1) Conversion of a *T1 to Pointer to *T2. // important: 强制转换，利用Pointer作为桥梁将一个指针类型转换为另外一个
 //
 // Provided that T2 is no larger than T1 and that the two share an equivalent
 // memory layout, this conversion allows reinterpreting data of one type as
 // data of another type. An example is the implementation of
 // math.Float64bits:
 //
-//	func Float64bits(f float64) uint64 {
+//	func Float64bits(f float64) uint64 { // note: 只要底层的内存布局可以使用转换后的类型进行解释，那它就可以转换
 //		return *(*uint64)(unsafe.Pointer(&f))
 //	}
 //
-// (2) Conversion of a Pointer to a uintptr (but not back to Pointer).
+// (2) Conversion of a Pointer to a uintptr (but not back to Pointer). // important: 将一个Pointer转成uintptr直接保存地址值
 //
 // Converting a Pointer to a uintptr produces the memory address of the value
 // pointed at, as an integer. The usual use for such a uintptr is to print it.
 //
-// Conversion of a uintptr back to Pointer is not valid in general.
+// Conversion of a uintptr back to Pointer is not valid in general. // important: 往回转一般不大可行会不一定有效
 //
 // A uintptr is an integer, not a reference.
 // Converting a Pointer to a uintptr creates an integer value
 // with no pointer semantics.
 // Even if a uintptr holds the address of some object,
-// the garbage collector will not update that uintptr's value
+// the garbage collector will not update that uintptr's value // important: gc不会将其作为指针处理。
 // if the object moves, nor will that uintptr keep the object
 // from being reclaimed.
-//
 // The remaining patterns enumerate the only valid conversions
 // from uintptr to Pointer.
 //
 // (3) Conversion of a Pointer to a uintptr and back, with arithmetic.
 //
 // If p points into an allocated object, it can be advanced through the object
-// by conversion to uintptr, addition of an offset, and conversion back to Pointer.
+// by conversion to uintptr, addition of an offset, and conversion back to Pointer. // important: 在将指针转换为uintptr后可以进行指针运算。
 //
 //	p = unsafe.Pointer(uintptr(p) + offset)
 //
@@ -86,7 +85,7 @@ type IntegerType int
 // In all cases, the result must continue to point into the original allocated object.
 //
 // Unlike in C, it is not valid to advance a pointer just beyond the end of
-// its original allocation:
+// its original allocation: // important: 和C不同，Go中的指针移动必须要在原始类型分配的有效内存内进行，不能超过分配的内存范围
 //
 //	// INVALID: end points outside allocated space.
 //	var s thing
@@ -96,10 +95,10 @@ type IntegerType int
 //	b := make([]byte, n)
 //	end = unsafe.Pointer(uintptr(unsafe.Pointer(&b[0])) + uintptr(n))
 //
-// Note that both conversions must appear in the same expression, with only
+// Note that both conversions must appear in the same expression, with only // important: 所有的操作必须放在同一个表达式中，这样才能编译通过
 // the intervening arithmetic between them:
 //
-//	// INVALID: uintptr cannot be stored in variable
+//	// important: INVALID: uintptr cannot be stored in variable
 //	// before conversion back to Pointer.
 //	u := uintptr(p)
 //	p = unsafe.Pointer(u + offset)
@@ -108,7 +107,7 @@ type IntegerType int
 //
 //	// INVALID: conversion of nil pointer
 //	u := unsafe.Pointer(nil)
-//	p := unsafe.Pointer(uintptr(u) + offset)
+//	p := unsafe.Pointer(uintptr(u) + offset) // important: nil通过uintptr实际的值就是0，计算后的地址自然也是非法的。
 //
 // (4) Conversion of a Pointer to a uintptr when calling functions like [syscall.Syscall].
 //
@@ -116,7 +115,7 @@ type IntegerType int
 // to the operating system, which then may, depending on the details of the call,
 // reinterpret some of them as pointers.
 // That is, the system call implementation is implicitly converting certain arguments
-// back from uintptr to pointer.
+// back from uintptr to pointer. // note: 在系统调用中，可以通过将某个地址传递给系统调用函数，这个地址会直接交给操作系统。操作系统内会再将它转换为某个指针。
 //
 // If a pointer argument must be converted to uintptr for use as an argument,
 // that conversion must appear in the call expression itself:
@@ -127,8 +126,8 @@ type IntegerType int
 // a call to a function implemented in assembly by arranging that the referenced
 // allocated object, if any, is retained and not moved until the call completes,
 // even though from the types alone it would appear that the object is no longer
-// needed during the call.
-//
+// needed during the call. // important: 系统调用中，指针参数必须要在调用时直接转换为uintptr，不能先转换为uintptr后存储到变量中。这个是由编译器决定的，该部分代码采用汇编完成。
+// important: 他会编排引用的所有对象，所以有点像abi。因此这是一种特殊的模式，必须在调用时进行转换uintptr。
 // For the compiler to recognize this pattern,
 // the conversion must appear in the argument list:
 //
@@ -150,7 +149,7 @@ type IntegerType int
 //
 // As in the cases above, it is invalid to store the result before the conversion:
 //
-//	// INVALID: uintptr cannot be stored in variable
+//	// INVALID: uintptr cannot be stored in variable // warning: 为什么呢？因为逃逸？还是因为特殊的模式？
 //	// before conversion back to Pointer.
 //	u := reflect.ValueOf(new(int)).Pointer()
 //	p := (*int)(unsafe.Pointer(u))
@@ -173,7 +172,7 @@ type IntegerType int
 //
 // In general, [reflect.SliceHeader] and [reflect.StringHeader] should be used
 // only as *reflect.SliceHeader and *reflect.StringHeader pointing at actual
-// slices or strings, never as plain structs.
+// slices or strings, never as plain structs. // note: 这两种可以直接指向并访问底层数据字段
 // A program should not declare or allocate variables of these struct types.
 //
 //	// INVALID: a directly-declared header will not hold Data as a reference.
@@ -185,7 +184,7 @@ type Pointer *ArbitraryType
 
 // Sizeof takes an expression x of any type and returns the size in bytes
 // of a hypothetical variable v as if v was declared via var v = x.
-// The size does not include any memory possibly referenced by x.
+// The size does not include any memory possibly referenced by x. // note: 大小不包括x引用的内存
 // For instance, if x is a slice, Sizeof returns the size of the slice
 // descriptor, not the size of the memory referenced by the slice;
 // if x is an interface, Sizeof returns the size of the interface value itself,
@@ -194,7 +193,7 @@ type Pointer *ArbitraryType
 // The return value of Sizeof is a Go constant if the type of the argument x
 // does not have variable size.
 // (A type has variable size if it is a type parameter or if it is an array
-// or struct type with elements of variable size).
+// or struct type with elements of variable size). // note: 包括类型参数
 func Sizeof(x ArbitraryType) uintptr
 
 // Offsetof returns the offset within the struct of the field represented by x,
@@ -203,11 +202,11 @@ func Sizeof(x ArbitraryType) uintptr
 // The return value of Offsetof is a Go constant if the type of the argument x
 // does not have variable size.
 // (See the description of [Sizeof] for a definition of variable sized types.)
-func Offsetof(x ArbitraryType) uintptr
+func Offsetof(x ArbitraryType) uintptr // note：important: 返回结构体中的字段偏移量
 
 // Alignof takes an expression x of any type and returns the required alignment
 // of a hypothetical variable v as if v was declared via var v = x.
-// It is the largest value m such that the address of v is always zero mod m.
+// It is the largest value m such that the address of v is always zero mod m.  // note: 对齐值就是系统能够允许的该类型变量地址可以被该值整除的值
 // It is the same as the value returned by [reflect.TypeOf](x).Align().
 // As a special case, if a variable s is of struct type and f is a field
 // within that struct, then Alignof(s.f) will return the required alignment
@@ -224,16 +223,16 @@ func Alignof(x ArbitraryType) uintptr
 // A constant len argument must be representable by a value of type int;
 // if it is an untyped constant it is given type int.
 // The rules for valid uses of Pointer still apply.
-func Add(ptr Pointer, len IntegerType) Pointer
+func Add(ptr Pointer, len IntegerType) Pointer // note: 实际上就是将指针转换为uintptr之后再进行相加
 
 // The function Slice returns a slice whose underlying array starts at ptr
 // and whose length and capacity are len.
-// Slice(ptr, len) is equivalent to
+// Slice(ptr, len) is equivalent to  // important: 实际上是根据起始指针和长度来构建一个某个类型的slice
 //
 //	(*[len]ArbitraryType)(unsafe.Pointer(ptr))[:]
 //
 // except that, as a special case, if ptr is nil and len is zero,
-// Slice returns nil.
+// Slice returns nil. // note: 特殊情况返回nil,即指针是空并且长度也是0则会返回一个该类型的空slice
 //
 // The len argument must be of integer type or an untyped constant.
 // A constant len argument must be non-negative and representable by a value of type int;

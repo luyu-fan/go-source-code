@@ -31,24 +31,24 @@ var modinfo string
 //
 // Design doc at https://golang.org/s/go11sched.
 
-// Worker thread parking/unparking.
+// Worker thread parking/unparking. // note: 系统线程的park/unpark
 // We need to balance between keeping enough running worker threads to utilize
 // available hardware parallelism and parking excessive running worker threads
 // to conserve CPU resources and power. This is not simple for two reasons:
-// (1) scheduler state is intentionally distributed (in particular, per-P work
+// (1) scheduler state is intentionally distributed (in particular, per-P work // => note: 调度任务可以认为是p的工作，具体体现在p的g队列中
 // queues), so it is not possible to compute global predicates on fast paths;
 // (2) for optimal thread management we would need to know the future (don't park
 // a worker thread when a new goroutine will be readied in near future).
 //
 // Three rejected approaches that would work badly:
 // 1. Centralize all scheduler state (would inhibit scalability).
-// 2. Direct goroutine handoff. That is, when we ready a new goroutine and there
+// 2. Direct goroutine handoff. That is, when we ready a new goroutine and there  // note: 当存在ready的g时，如果有空闲的p则直接将g交给一个worker => 1. 底层工作线程抖动，2. 线程切换丧失局部性。
 //    is a spare P, unpark a thread and handoff it the thread and the goroutine.
 //    This would lead to thread state thrashing, as the thread that readied the
 //    goroutine can be out of work the very next moment, we will need to park it.
 //    Also, it would destroy locality of computation as we want to preserve
 //    dependent goroutines on the same thread; and introduce additional latency.
-// 3. Unpark an additional thread whenever we ready a goroutine and there is an
+// 3. Unpark an additional thread whenever we ready a goroutine and there is an  // note: 没当一个新的g出现时，确保有一个没有被park的工作线程。
 //    idle P, but don't do handoff. This would lead to excessive thread parking/
 //    unparking as the additional threads will instantly park without discovering
 //    any work to do.
@@ -59,21 +59,21 @@ var modinfo string
 // goroutine, new/modified-earlier timers, and idle-priority GC. See below for
 // additional details.
 //
-// We unpark an additional thread when we submit work if (this is wakep()):
+// We unpark an additional thread when we submit work if (this is wakep()): // note: 提交g时如有空闲的p并且没有idle中的m => 唤醒一个m
 // 1. There is an idle P, and
 // 2. There are no "spinning" worker threads.
 //
-// A worker thread is considered spinning if it is out of local work and did
+// A worker thread is considered spinning if it is out of local work and did // note: m利用绑定的p从三个来源获取工作内容，本地队列，全局队列和netpoller
 // not find work in the global run queue or netpoller; the spinning state is
 // denoted in m.spinning and in sched.nmspinning. Threads unparked this way are
 // also considered spinning; we don't do goroutine handoff so such threads are
 // out of work initially. Spinning threads spin on looking for work in per-P
-// run queues and timer heaps or from the GC before parking. If a spinning
+// run queues and timer heaps or from the GC before parking. If a spinning // note: timer也是利用m来完成的？
 // thread finds work it takes itself out of the spinning state and proceeds to
 // execution. If it does not find work it takes itself out of the spinning
 // state and then parks.
 //
-// If there is at least one spinning thread (sched.nmspinning>1), we don't
+// If there is at least one spinning thread (sched.nmspinning>1), we don't  // note: spinning的m找到了一个g那么会唤醒一个作为补偿。
 // unpark new threads when submitting work. To compensate for that, if the last
 // spinning thread finds work and stops spinning, it must unpark a new spinning
 // thread. This approach smooths out unjustified spikes of thread unparking,
@@ -87,8 +87,8 @@ var modinfo string
 // semi-persistent CPU underutilization.
 //
 // The general pattern for submission is:
-// 1. Submit work to the local or global run queue, timer heap, or GC state.
-// 2. #StoreLoad-style memory barrier.
+// 1. Submit work to the local or global run queue, timer heap, or GC state. // note: 系统内可以提交的g类型，普通的g, timer heap和gc state.
+// 2. #StoreLoad-style memory barrier. // note: 内存屏障？原子操作？
 // 3. Check sched.nmspinning.
 //
 // The general pattern for spinning->non-spinning transition is:
@@ -104,7 +104,7 @@ var modinfo string
 // the synchronization approach:
 // * Ready goroutine: this is an obvious source of work; the goroutine is
 //   immediately ready and must run on some thread eventually.
-// * New/modified-earlier timer: The current timer implementation (see time.go)
+// * New/modified-earlier timer: The current timer implementation (see time.go) // note: timer是利用netpool来做的？
 //   uses netpoll in a thread with no work available to wait for the soonest
 //   timer. If there is no thread waiting, we want a new spinning thread to go
 //   wait.
@@ -150,7 +150,6 @@ func main() {
 	// Racectx of m0->g0 is used only as the parent of the main goroutine.
 	// It must not be used for anything else.
 	mp.g0.racectx = 0
-
 	// Max stack size is 1 GB on 64-bit, 250 MB on 32-bit.
 	// Using decimal instead of binary GB and MB because
 	// they look nicer in the stack overflow failure message.

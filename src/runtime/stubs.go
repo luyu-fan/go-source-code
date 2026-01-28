@@ -25,7 +25,7 @@ func add(p unsafe.Pointer, x uintptr) unsafe.Pointer {
 	return unsafe.Pointer(uintptr(p) + x)
 }
 
-// getg returns the pointer to the current g.
+// getg returns the pointer to the current g. 获取当前正在运行的g的指针
 // The compiler rewrites calls to this function into instructions
 // that fetch the g directly (from TLS or from the dedicated register).
 func getg() *g

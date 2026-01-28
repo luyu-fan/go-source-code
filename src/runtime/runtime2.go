@@ -176,8 +176,8 @@ type funcval struct {
 	// variable-size, fn-specific data here
 }
 
-type iface struct {
-	tab  *itab
+type iface struct { // note: 接口类型
+	tab  *itab // note: 直接和abi相关
 	data unsafe.Pointer
 }
 
@@ -190,7 +190,7 @@ func efaceOf(ep *any) *eface {
 	return (*eface)(unsafe.Pointer(ep))
 }
 
-// The guintptr, muintptr, and puintptr are all used to bypass write barriers.
+// The guintptr, muintptr, and puintptr are all used to bypass write barriers. // note: 通过它绕过写屏障
 // It is particularly important to avoid write barriers when the current P has
 // been released, because the GC thinks the world is stopped, and an
 // unexpected write barrier would not be synchronized with the GC,
@@ -234,7 +234,7 @@ func efaceOf(ep *any) *eface {
 // alternate arena. Using guintptr doesn't make that problem any worse.
 // Note that pollDesc.rg, pollDesc.wg also store g in uintptr form,
 // so they would need to be updated too if g's start moving.
-type guintptr uintptr
+type guintptr uintptr // important: 通过将g保存为指针地址数字 来绕过写屏障
 
 //go:nosplit
 func (gp guintptr) ptr() *g { return (*g)(unsafe.Pointer(gp)) }
@@ -244,7 +244,7 @@ func (gp *guintptr) set(g *g) { *gp = guintptr(unsafe.Pointer(g)) }
 
 //go:nosplit
 func (gp *guintptr) cas(old, new guintptr) bool {
-	return atomic.Casuintptr((*uintptr)(unsafe.Pointer(gp)), uintptr(old), uintptr(new))
+	return atomic.Casuintptr((*uintptr)(unsafe.Pointer(gp)), uintptr(old), uintptr(new)) // important: 由底层提供的cas操作
 }
 
 //go:nosplit
@@ -252,13 +252,13 @@ func (gp *g) guintptr() guintptr {
 	return guintptr(unsafe.Pointer(gp))
 }
 
-// setGNoWB performs *gp = new without a write barrier.
+// setGNoWB performs *gp = new without a write barrier. note: 在绕过写屏障的情况下更新g指针？
 // For times when it's impractical to use a guintptr.
 //
 //go:nosplit
 //go:nowritebarrier
 func setGNoWB(gp **g, new *g) {
-	(*guintptr)(unsafe.Pointer(gp)).set(new)
+	(*guintptr)(unsafe.Pointer(gp)).set(new) // important: 不带写屏障地更新g. 即将原来的一个g指针的指针，指向一个新的g指针。
 }
 
 type puintptr uintptr
@@ -295,7 +295,9 @@ func setMNoWB(mp **m, new *m) {
 	(*muintptr)(unsafe.Pointer(mp)).set(new)
 }
 
-type gobuf struct {
+// note: guintptr,puintptr, muintptr本质上都是和专门设置的为了绕过写屏障的
+
+type gobuf struct { // note: ?这里代表栈帧吗？
 	// The offsets of sp, pc, and g are known to (hard-coded in) libmach.
 	//
 	// ctxt is unusual with respect to GC: it may be a
@@ -308,22 +310,22 @@ type gobuf struct {
 	// and restores it doesn't need write barriers. It's still
 	// typed as a pointer so that any other writes from Go get
 	// write barriers.
-	sp   uintptr
-	pc   uintptr
-	g    guintptr
-	ctxt unsafe.Pointer
-	ret  uintptr
-	lr   uintptr
-	bp   uintptr // for framepointer-enabled architectures
+	sp   uintptr        // note: 栈指针
+	pc   uintptr        // note: 程序计数器
+	g    guintptr       // note: 当前函数栈帧所对应的g指针？
+	ctxt unsafe.Pointer // note: 这里作为栈扫描的根节点？？？
+	ret  uintptr        // note: 函数返回值
+	lr   uintptr        // note: 链接寄存器
+	bp   uintptr        // for framepointer-enabled architectures
 }
 
 // sudog (pseudo-g) represents a g in a wait list, such as for sending/receiving
-// on a channel.
+// on a channel. // note: 代表在阻塞队列中的g
 //
 // sudog is necessary because the g ↔ synchronization object relation
 // is many-to-many. A g can be on many wait lists, so there may be
 // many sudogs for one g; and many gs may be waiting on the same
-// synchronization object, so there may be many sudogs for one object.
+// synchronization object, so there may be many sudogs for one object. // important: 一个g可能会在多个阻塞队列中即等待多个对象，而每个对象也可以会有多个g等待???
 //
 // sudogs are allocated from a special pool. Use acquireSudog and
 // releaseSudog to allocate and free them.
@@ -370,7 +372,7 @@ type sudog struct {
 	c        *hchan // channel
 }
 
-type libcall struct {
+type libcall struct { // important: 和外部系统沟通的格式, 比如syscall. 这个是非常关键的交互结构，调用过程都是使用汇编实现的
 	fn   uintptr
 	n    uintptr // number of parameters
 	args uintptr // parameters
@@ -382,6 +384,7 @@ type libcall struct {
 // Stack describes a Go execution stack.
 // The bounds of the stack are exactly [lo, hi),
 // with no implicit data structures on either side.
+// note: 描述Go执行栈的边界
 type stack struct {
 	lo uintptr
 	hi uintptr
@@ -392,6 +395,8 @@ type heldLockInfo struct {
 	lockAddr uintptr
 	rank     lockRank
 }
+
+// todo 看到这里
 
 type g struct {
 	// Stack parameters.
@@ -450,11 +455,11 @@ type g struct {
 	// pointing into this goroutine's stack. If true, stack
 	// copying needs to acquire channel locks to protect these
 	// areas of the stack.
-	activeStackChans bool
+	activeStackChans bool // note: 是否存在有指向栈区的channel
 	// parkingOnChan indicates that the goroutine is about to
 	// park on a chansend or chanrecv. Used to signal an unsafe point
 	// for stack shrinking.
-	parkingOnChan atomic.Bool
+	parkingOnChan atomic.Bool // note: 标识是否正在因为channel操作而被阻塞了
 	// inMarkAssist indicates whether the goroutine is in mark assist.
 	// Used by the execution tracer.
 	inMarkAssist bool
@@ -478,7 +483,7 @@ type g struct {
 	ancestors     *[]ancestorInfo // ancestor information goroutine(s) that created this goroutine (only used if debug.tracebackancestors)
 	startpc       uintptr         // pc of goroutine function
 	racectx       uintptr
-	waiting       *sudog         // sudog structures this g is waiting on (that have a valid elem ptr); in lock order
+	waiting       *sudog         // sudog structures this g is waiting on (that have a valid elem ptr); in lock order // note: 标识当前g正在等待同步对象
 	cgoCtxt       []uintptr      // cgo traceback context
 	labels        unsafe.Pointer // profiler labels
 	timer         *timer         // cached timer for time.Sleep
@@ -506,6 +511,8 @@ type g struct {
 	// determines how this corresponds to scan work debt.
 	gcAssistBytes int64
 }
+
+// todo 看到这里
 
 // gTrackingPeriod is the number of transitions out of _Grunning between
 // latency tracking runs.
